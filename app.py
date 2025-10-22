@@ -508,6 +508,40 @@ def delete_student(student_id):
     cur = conn.cursor()
     
     try:
+        # Get student number before deletion for reference
+        cur.execute("SELECT student_number FROM students WHERE id = %s", (student_id,))
+        student_result = cur.fetchone()
+        
+        if not student_result:
+            return jsonify({'success': False, 'message': 'Student not found'}), 404
+        
+        student_number = student_result[0]
+        
+        # Delete only the student (keep their complaints in the database)
+        cur.execute("DELETE FROM students WHERE id = %s", (student_id,))
+        
+        # Removed the line that deletes complaints
+        # cur.execute("DELETE FROM complaints WHERE student_number = %s", (student_number,))
+        
+        conn.commit()
+        return jsonify({'success': True, 'message': 'Student deleted successfully (complaints preserved)'})
+    
+    except Exception as e:
+        conn.rollback()
+        return jsonify({'success': False, 'message': 'Error deleting student'}), 500
+    finally:
+        cur.close()
+        conn.close()
+    if not session.get('admin_logged_in'):
+        return jsonify({'success': False, 'message': 'Not authorized'}), 401
+    
+    conn = get_db_connection()
+    if conn is None:
+        return jsonify({'success': False, 'message': 'Database connection error'}), 500
+    
+    cur = conn.cursor()
+    
+    try:
         # Get student number before deletion for cleanup
         cur.execute("SELECT student_number FROM students WHERE id = %s", (student_id,))
         student_result = cur.fetchone()
