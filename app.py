@@ -1,11 +1,17 @@
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash, send_file
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import pytz
 import os
 from dotenv import load_dotenv
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
+from reportlab.lib.units import inch
+import io
 
 # Load environment variables
 load_dotenv()
@@ -101,6 +107,77 @@ def init_db():
 with app.app_context():
     init_db()
 
+# Helper function to generate PDF
+def generate_complaints_pdf(complaints, period):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    elements = []
+    
+    styles = getSampleStyleSheet()
+    
+    # Title
+    title = Paragraph(f"Maintenance Complaints Report - {period}", styles['Title'])
+    elements.append(title)
+    elements.append(Spacer(1, 0.3*inch))
+    
+    # Summary
+    total_complaints = len(complaints)
+    pending_count = len([c for c in complaints if c['status'] == 'pending'])
+    completed_count = len([c for c in complaints if c['status'] == 'completed'])
+    
+    summary_text = f"Total Complaints: {total_complaints} | Pending: {pending_count} | Completed: {completed_count}"
+    summary = Paragraph(summary_text, styles['Normal'])
+    elements.append(summary)
+    elements.append(Spacer(1, 0.2*inch))
+    
+    # Table data
+    table_data = [['Comp #', 'Date', 'Student #', 'Name', 'Location', 'Complaint', 'Status']]
+    
+    for complaint in complaints:
+        location = f"Block {complaint['block_number']}, Unit {complaint['unit_number']}, Room {complaint['room_number']}"
+        complaint_date = complaint['created_at'].strftime('%Y-%m-%d %H:%M')
+        
+        # Truncate complaint text if too long
+        complaint_text = complaint['complaint_text']
+        if len(complaint_text) > 100:
+            complaint_text = complaint_text[:100] + '...'
+        
+        table_data.append([
+            str(complaint['complaint_number']),
+            complaint_date,
+            complaint['student_number'],
+            complaint['name_surname'],
+            location,
+            complaint_text,
+            complaint['status'].upper()
+        ])
+    
+    # Create table
+    table = Table(table_data, colWidths=[0.5*inch, 1*inch, 1*inch, 1.2*inch, 1.5*inch, 2*inch, 0.8*inch])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    
+    elements.append(table)
+    
+    # Footer
+    elements.append(Spacer(1, 0.3*inch))
+    generated_date = datetime.now(sa_timezone).strftime('%Y-%m-%d %H:%M')
+    footer = Paragraph(f"Generated on: {generated_date}", styles['Normal'])
+    elements.append(footer)
+    
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
 # Routes
 @app.route('/')
 def index():
@@ -140,7 +217,7 @@ def submit_complaint():
             conn.close()
             return jsonify({
                 'success': False,
-                'message': 'Student number not found in our system. Please contact administration.'
+                'message': 'Invalid student number.'
             }), 400
 
         # Get today's complaint count for numbering
@@ -165,7 +242,7 @@ def submit_complaint():
 
         return jsonify({
             'success': True,
-            'message': f'Complaint submitted successfully! Your complaint number is: {complaint_number}',
+            'message': f'Submitted successfully! Your complaint number is: {complaint_number}',
             'complaint_number': complaint_number
         })
 
@@ -269,6 +346,81 @@ def admin_students():
     
     return render_template('admin_students.html', students=students)
 
+@app.route('/admin/download-complaints/<period>')
+def download_complaints(period):
+    if not session.get('admin_logged_in'):
+        return redirect(url_for('admin_login'))
+    
+    conn = get_db_connection()
+    if conn is None:
+        flash('Database connection error', 'error')
+        return redirect(url_for('admin_dashboard'))
+    
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    
+    try:
+        today = datetime.now(sa_timezone).date()
+        
+        if period == 'today':
+            start_date = today
+            end_date = today
+            period_text = f"Today ({today})"
+        elif period == 'week':
+            start_date = today - timedelta(days=7)
+            end_date = today
+            period_text = f"Last Week ({start_date} to {today})"
+        elif period == 'month':
+            start_date = today.replace(day=1)
+            end_date = today
+            period_text = f"This Month ({start_date} to {today})"
+        elif period == 'all':
+            start_date = None
+            end_date = None
+            period_text = "All Time"
+        else:
+            # Custom month range (format: YYYY-MM)
+            try:
+                year, month = map(int, period.split('-'))
+                start_date = date(year, month, 1)
+                if month == 12:
+                    end_date = date(year + 1, 1, 1) - timedelta(days=1)
+                else:
+                    end_date = date(year, month + 1, 1) - timedelta(days=1)
+                period_text = f"Month {period}"
+            except:
+                start_date = today
+                end_date = today
+                period_text = f"Today ({today})"
+        
+        if start_date and end_date:
+            cur.execute(
+                "SELECT * FROM complaints WHERE DATE(created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Africa/Johannesburg') BETWEEN %s AND %s ORDER BY created_at DESC",
+                (start_date, end_date)
+            )
+        else:
+            cur.execute("SELECT * FROM complaints ORDER BY created_at DESC")
+        
+        complaints = cur.fetchall()
+        
+        # Generate PDF
+        pdf_buffer = generate_complaints_pdf(complaints, period_text)
+        
+        filename = f"complaints_report_{period}_{today}.pdf"
+        return send_file(
+            pdf_buffer,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/pdf'
+        )
+        
+    except Exception as e:
+        print(f"Error generating PDF: {e}")
+        flash('Error generating report', 'error')
+        return redirect(url_for('admin_dashboard'))
+    finally:
+        cur.close()
+        conn.close()
+
 @app.route('/admin/update-status/<int:complaint_id>', methods=['POST'])
 def update_status(complaint_id):
     if not session.get('admin_logged_in'):
@@ -356,17 +508,23 @@ def delete_student(student_id):
     cur = conn.cursor()
     
     try:
-        # Check if student has any complaints
-        cur.execute("SELECT COUNT(*) FROM complaints WHERE student_number = (SELECT student_number FROM students WHERE id = %s)", (student_id,))
-        complaint_count = cur.fetchone()[0]
+        # Get student number before deletion for cleanup
+        cur.execute("SELECT student_number FROM students WHERE id = %s", (student_id,))
+        student_result = cur.fetchone()
         
-        if complaint_count > 0:
-            return jsonify({'success': False, 'message': 'Cannot delete student with existing complaints'}), 400
+        if not student_result:
+            return jsonify({'success': False, 'message': 'Student not found'}), 404
         
-        # Delete student
+        student_number = student_result[0]
+        
+        # Delete student (this will now work even if they have complaints)
         cur.execute("DELETE FROM students WHERE id = %s", (student_id,))
+        
+        # Also delete their complaints (optional - you can remove this line if you want to keep complaints)
+        cur.execute("DELETE FROM complaints WHERE student_number = %s", (student_number,))
+        
         conn.commit()
-        return jsonify({'success': True, 'message': 'Student deleted successfully'})
+        return jsonify({'success': True, 'message': 'Student and their complaints deleted successfully'})
     
     except Exception as e:
         conn.rollback()
