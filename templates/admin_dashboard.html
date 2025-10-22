@@ -20,26 +20,7 @@
     </div>
 </div>
 
-<!-- Download Reports Section -->
-<div class="form-container">
-    <h3>Download Reports</h3>
-    <div class="download-buttons">
-        <a href="/admin/download-complaints/today" class="btn btn-primary">Today's Report</a>
-        <a href="/admin/download-complaints/week" class="btn btn-primary">Weekly Report</a>
-        <a href="/admin/download-complaints/month" class="btn btn-primary">Monthly Report</a>
-        <a href="/admin/download-complaints/all" class="btn btn-primary">All Reports</a>
-    </div>
-</div>
 
-<div class="form-container">
-    <h3>Add Student</h3>
-    <div id="studentMessage"></div>
-    <div class="student-form">
-        <input type="text" id="studentNumber" placeholder="Enter student number">
-        <input type="text" id="nameSurname" placeholder="Enter student name and surname">
-        <button class="btn" id="addStudentBtn">Add Student</button>
-    </div>
-</div>
 
 <div class="complaints-table">
     <table>
@@ -85,6 +66,28 @@
         </tbody>
     </table>
 </div>
+
+<!-- Download Reports Section -->
+<div class="form-container">
+    <h3>Download Reports</h3>
+    <div class="download-buttons">
+        <a href="/admin/download-complaints/today" class="btn btn-primary">Today's Report</a>
+        <a href="/admin/download-complaints/week" class="btn btn-primary">Weekly Report</a>
+        <a href="/admin/download-complaints/month" class="btn btn-primary">Monthly Report</a>
+        <a href="/admin/download-complaints/all" class="btn btn-primary">All Reports</a>
+    </div>
+</div>
+
+<div class="form-container">
+    <h3>Add Student</h3>
+    <div id="studentMessage"></div>
+    <div class="student-form">
+        <input type="text" id="studentNumber" placeholder="Enter student number">
+        <input type="text" id="nameSurname" placeholder="Enter student name and surname">
+        <button class="btn" id="addStudentBtn">Add Student</button>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
