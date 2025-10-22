@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}Maintenance Report - Student Residence{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <h1>Maintenance Report Form</h1>
+    
+    <div id="message"></div>
+    
+    <form id="complaintForm">
+        <div class="form-group">
+            <label for="name_surname">Name(s) and Surname</label>
+            <input type="text" id="name_surname" name="name_surname" placeholder="Name(s) and Surname" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="student_number">Student Number</label>
+            <input type="text" id="student_number" name="student_number" placeholder="Student Number" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="student_email">Student Email</label>
+            <input type="email" id="student_email" name="student_email" placeholder="Student Email" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="block_number">Block Number</label>
+            <input type="text" id="block_number" name="block_number" placeholder="Block Number" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="unit_number">Unit Number</label>
+            <input type="text" id="unit_number" name="unit_number" placeholder="Unit Number" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="room_number">Room Number</label>
+            <input type="text" id="room_number" name="room_number" placeholder="Room Number" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="complaint_text">Complaint/Request</label>
+            <textarea id="complaint_text" name="complaint_text" placeholder="Please describe your maintenance issue or request..." required></textarea>
+        </div>
+        
+        <button type="submit" class="btn btn-block">Submit Report</button>
+    </form>
+    
+    <div class="admin-link">
+        <a href="/admin/login">Admin Login</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.getElementById('complaintForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        const submitButton = this.querySelector('button');
+        const messageDiv = document.getElementById('message');
+        
+        submitButton.disabled = true;
+        submitButton.textContent = 'Submitting...';
+        
+        try {
+            const response = await fetch('/submit-complaint', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                messageDiv.className = 'message success';
+                messageDiv.textContent = result.message;
+                document.getElementById('complaintForm').reset();
+            } else {
+                messageDiv.className = 'message error';
+                messageDiv.textContent = result.message;
+            }
+        } catch (error) {
+            messageDiv.className = 'message error';
+            messageDiv.textContent = 'An error occurred. Please try again.';
+        } finally {
+            submitButton.disabled = false;
+            submitButton.textContent = 'Submit Report';
+        }
+    });
+</script>
+{% endblock %}

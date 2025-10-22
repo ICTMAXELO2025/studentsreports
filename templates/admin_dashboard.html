@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard{% endblock %}
+
+{% block content %}
+<div class="admin-header">
+    <h2>Admin Dashboard - Maintenance Reports</h2>
+    <p>Welcome, {{ session.get('admin_username', 'Admin') }}! Manage student maintenance reports below.</p>
+    
+    <div class="controls">
+        <div class="search-group">
+            <input type="date" id="searchDate" value="{{ request.args.get('search_date', '') }}">
+            <button class="btn btn-success" id="searchBtn">Search by Date</button>
+            <button class="btn btn-secondary" id="resetBtn">Show All</button>
+        </div>
+        <div class="control-group">
+            <a href="/admin/students" class="btn btn-info">View Students</a>
+            <a href="/admin/logout" class="btn btn-danger">Logout</a>
+        </div>
+    </div>
+</div>
+
+<div class="form-container">
+    <h3>Add Student</h3>
+    <div id="studentMessage"></div>
+    <div class="student-form">
+        <input type="text" id="studentNumber" placeholder="Enter student number">
+        <input type="text" id="nameSurname" placeholder="Enter student name and surname">
+        <button class="btn" id="addStudentBtn">Add Student</button>
+    </div>
+</div>
+
+<div class="complaints-table">
+    <table>
+        <thead>
+            <tr>
+                <th>Comp #</th>
+                <th>Date</th>
+                <th>Name</th>
+                <th>Student #</th>
+                <th>Email</th>
+                <th>Location</th>
+                <th>Complaint</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for complaint in complaints %}
+            <tr>
+                <td><strong>{{ complaint.complaint_number }}</strong></td>
+                <td>{{ complaint.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>{{ complaint.name_surname }}</td>
+                <td>{{ complaint.student_number }}</td>
+                <td>{{ complaint.student_email }}</td>
+                <td>Block {{ complaint.block_number }}, Unit {{ complaint.unit_number }}, Room {{ complaint.room_number }}</td>
+                <td>{{ complaint.complaint_text }}</td>
+                <td>
+                    <span class="status-{{ complaint.status }}">{{ complaint.status }}</span>
+                </td>
+                <td>
+                    {% if complaint.status == 'pending' %}
+                        <button class="action-btn btn-success update-status-btn" data-id="{{ complaint.id }}" data-status="completed">Mark Completed</button>
+                    {% else %}
+                        <button class="action-btn btn-secondary update-status-btn" data-id="{{ complaint.id }}" data-status="pending">Mark Pending</button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="9" style="text-align: center; padding: 30px;">No complaints found</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Search buttons
+        document.getElementById('searchBtn').addEventListener('click', searchByDate);
+        document.getElementById('resetBtn').addEventListener('click', resetSearch);
+        document.getElementById('addStudentBtn').addEventListener('click', addStudent);
+        
+        // Status update buttons
+        document.querySelectorAll('.update-status-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const complaintId = this.getAttribute('data-id');
+                const status = this.getAttribute('data-status');
+                updateStatus(complaintId, status);
+            });
+        });
+    });
+
+    function searchByDate() {
+        const date = document.getElementById('searchDate').value;
+        if (date) {
+            window.location.href = '/admin/dashboard?search_date=' + date;
+        }
+    }
+
+    function resetSearch() {
+        window.location.href = '/admin/dashboard';
+    }
+
+    async function updateStatus(complaintId, status) {
+        try {
+            const response = await fetch('/admin/update-status/' + complaintId, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ status: status })
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                location.reload();
+            } else {
+                alert('Error updating status: ' + (result.message || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Error updating status: ' + error.message);
+        }
+    }
+
+    async function addStudent() {
+        const studentNumber = document.getElementById('studentNumber').value;
+        const nameSurname = document.getElementById('nameSurname').value;
+        const messageDiv = document.getElementById('studentMessage');
+        
+        if (!studentNumber || !nameSurname) {
+            messageDiv.className = 'message error';
+            messageDiv.textContent = 'Please enter both student number and name';
+            return;
+        }
+
+        try {
+            const response = await fetch('/admin/add-student', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                    student_number: studentNumber,
+                    name_surname: nameSurname 
+                })
+            });
+
+            const result = await response.json();
+            
+            if (result.success) {
+                messageDiv.className = 'message success';
+                messageDiv.textContent = result.message;
+                document.getElementById('studentNumber').value = '';
+                document.getElementById('nameSurname').value = '';
+            } else {
+                messageDiv.className = 'message error';
+                messageDiv.textContent = result.message;
+            }
+        } catch (error) {
+            messageDiv.className = 'message error';
+            messageDiv.textContent = 'Error adding student: ' + error.message;
+        }
+    }
+</script>
+{% endblock %}
